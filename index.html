@@ -1,0 +1,152 @@
+<html>
+	<head>
+			<meta charset="UTF-8">
+			<title>Logger</title>
+			<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';" />
+			<style>
+				body{
+					margin: 0;
+					padding: 0;
+					color: #C9C9C9;
+					background-color: #1E1E1E;
+				}
+				.logger-text-area{
+					resize: none;
+					width: 100%;
+					outline: none;
+					border: unset;
+					font-size: 1.2em;
+					font-family: monospace;
+				}
+				.text-string{
+					position: relative;
+				}
+				mark {
+					border-radius: 3px;
+					background-color: #ffffff;
+					color: black;
+				}
+				.context-menu{
+					position: absolute;
+					display: none;
+					padding: 10px 5px;
+					background-color: #252526;
+					z-index: 100;
+					display: flex;
+					align-items: center;
+				}
+				.context-menu-item{
+					cursor: pointer;
+				}
+				.context-menu-item:hover{
+					background-color: #094771;
+				}
+				.warn{
+					background-color: #ffffff;
+					color: black;
+				}
+			</style>
+	</head>
+	<body>
+			<div id='text' class="logger-text-area" /></div>
+	</body>
+	<script>
+		const textBox = document.getElementById("text");
+		const ipc = window.require("electron").ipcRenderer;
+		let hiText = null;
+		let reading = false;
+		ipc.on("fileValue", (event, value) => {
+			let res = value.split("\n")
+			textBox.innerHTML = '';
+			res.map((item,i) => { 
+				let child = document.createElement("div");
+				child.classList.add("text-string");
+				child.innerHTML = `Line ${i+1}: ${item}`;
+				textBox.appendChild(child);
+			}); 
+			highlightText();
+			document.body.scrollTop = document.body.scrollHeight;
+			reading = true;
+		});
+		ipc.on("highlightValue", (event, value) => {
+			highlightText(value)
+		});
+		ipc.on("stopReading", (event, value) => {
+			reading = false
+		});
+		ipc.on("startReading", (event, value) => {
+			reading = true
+		});
+		textBox.addEventListener("contextmenu",(e) => {
+			removeContextMenu();
+			let selectedText = getSelectionText();
+			let rect = e.target.getBoundingClientRect();
+			let x = e.clientX - rect.left; //x position within the element.
+			let y = e.clientY - rect.top;  //y position within the element.
+			let contextMenu = document.createElement("div");
+			contextMenu.classList.add("context-menu")
+			contextMenu.style.left = x;
+			contextMenu.style.top =y;
+			contextMenu.style.display = "block";
+			e.target.appendChild(contextMenu);
+			let menuItem = document.createElement("div");
+			menuItem.classList.add("context-menu-item");
+			menuItem.innerHTML = "Highlight selected text template";
+			menuItem.addEventListener("click",() => {
+				highlightText(selectedText);
+			})
+			contextMenu.appendChild(menuItem);
+			menuItem = document.createElement("div");
+			menuItem.classList.add("context-menu-item");
+			menuItem.innerHTML = reading ? "Stop reading..." : "Start reading..." ;
+			menuItem.addEventListener("click",(e) => {
+				if(reading){
+					ipc.send("stopReading");
+				} else{
+					ipc.send("startReading");
+				}
+			})
+			contextMenu.appendChild(menuItem);
+		})
+		textBox.addEventListener("click",() => {
+			removeContextMenu();
+		})
+
+		const removeContextMenu = () => {
+			let removableNodes = document.getElementsByClassName("context-menu");
+			removableNodesArray = [...removableNodes]
+			removableNodesArray.forEach( 
+				node => node.remove()
+			);
+		}
+
+		const getSelectionText = () =>{
+			var text = "";
+			if (window.getSelection) {
+					text = window.getSelection().toString();
+			} else if (document.selection && document.selection.type != "Control") {
+					text = document.selection.createRange().text;
+			}
+			return text;
+		}
+
+		const highlightText = (value) => {
+			if(!value && !hiText) return;
+			console.log(`highlightText called`);
+			console.log(`value =>`,value);
+			console.log(`hiText =>`,hiText);
+			let template = value || hiText;
+			console.log(`template =>`,template);
+			hiText = template;
+			let childNodes  = textBox.childNodes;
+			childNodes.forEach(item => {
+				console.log(`item.innerHTML.includes(template) =>`,item.innerHTML.includes(template));
+				if(item.innerHTML.includes(template)){
+					item.innerHTML = item.innerHTML.replaceAll(template, `<mark class="warn">${template}</mark>`);
+				}
+			});
+		}
+	</script>
+
+</html>
+
