@@ -1,0 +1,206 @@
+<html>
+	<head>
+			<meta charset="UTF-8">
+			<title>Logger</title>
+			<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';" />
+			<style>
+				body{
+					margin: 0;
+					padding: 0;
+					color: #C9C9C9;
+					background-color: rgb(30, 30, 30);
+				}
+				.logger-text-area{
+					resize: none;
+					width: 100%;
+					outline: none;
+					border: unset;
+					font-size: 1.2em;
+					font-family: Segoe WPC,Segoe UI,sans-serif;
+				}
+				.text-string{
+					position: relative;
+				}
+				mark {
+					border-radius: 3px;
+					background-color: #ffffff;
+					color: black;
+				}
+				.context-menu{
+					position: absolute;
+					display: none;
+					padding: 10px 5px;
+					background-color: #252526;
+					z-index: 100;
+					display: flex;
+					align-items: center;
+				}
+				.context-menu-item{
+					cursor: pointer;
+				}
+				.context-menu-item:hover{
+					background-color: #094771;
+				}
+				.warn{
+					background-color: #ffffff;
+					color: black;
+				}
+				.finder{
+					position: fixed;
+					top: 0;
+					right: 0;
+					width: 300px;
+					height: 32px;
+					background-color: #252526;
+					padding: 5px;
+					box-shadow: 0 0 8px 2px rgba(0, 0, 0, 0.36);
+				}
+				.find-input{
+					outline: #3C3C3C;
+					color: #A6A6A6;
+					font-size: 1.1em;
+					background-color: #3C3C3C;
+					width: 100%;
+					border: unset;
+					padding-left: 5px;
+				}
+			</style>
+	</head>
+	<body>
+			<div id='text' class="logger-text-area" /></div>
+			<div id="finder" class="finder" style="display: none">
+			<input id="finderInput" class="find-input" type="text" placeholder="Find...">
+		</div>
+	</body>
+	<script>
+		const textBox = document.getElementById("text");
+		const finder = document.getElementById("finder");
+		const finderInput = document.getElementById("finderInput");
+		const ipc = window.require("electron").ipcRenderer;
+		let hiText = null;
+		let reading = false;
+		ipc.on("fileValue", (event, value) => {
+			let res = value.split("\n")
+			textBox.innerHTML = '';
+			res.map((item,i) => { 
+				let child = document.createElement("div");
+				child.classList.add("text-string");
+				child.innerHTML = `<span style="color: red;">Line ${i+1}:</span> ${item}`;
+				textBox.appendChild(child);
+			}); 
+			highlightText();
+			document.body.scrollTop = document.body.scrollHeight;
+			reading = true;
+		});
+		ipc.on("highlightValue", (event, value) => {
+			highlightText(value)
+		});
+		ipc.on("stopReading", (event, value) => {
+			reading = false
+		});
+		ipc.on("startReading", (event, value) => {
+			reading = true
+		});
+		ipc.on("openFinder", (event) => {
+			console.log(`Finder`);
+			if(document.getElementById("finder").style.display === "none"){
+			document.getElementById("finder").style.display = "flex";
+			finderInput.focus();
+		}
+			else {document.getElementById("finder").style.display = "none";}
+		})
+		finder.addEventListener("keyup", (e) => {
+		console.log(`E =>`, e.key);
+		console.log(`finder value =>`, finderInput.value);
+		if(finderInput.value){
+			findText(finderInput.value);
+		}
+		})
+		textBox.addEventListener("contextmenu",(e) => {
+			removeContextMenu();
+			let selectedText = getSelectionText();
+			let rect = e.target.getBoundingClientRect();
+			let x = e.clientX - rect.left; //x position within the element.
+			let y = e.clientY - rect.top;  //y position within the element.
+			let contextMenu = document.createElement("div");
+			contextMenu.classList.add("context-menu")
+			contextMenu.style.left = x;
+			contextMenu.style.top =y;
+			contextMenu.style.display = "block";
+			e.target.appendChild(contextMenu);
+			let menuItem = document.createElement("div");
+			menuItem.classList.add("context-menu-item");
+			menuItem.innerHTML = "Highlight selected text template";
+			menuItem.addEventListener("click",() => {
+				highlightText(selectedText);
+			})
+			contextMenu.appendChild(menuItem);
+			menuItem = document.createElement("div");
+			menuItem.classList.add("context-menu-item");
+			menuItem.innerHTML = reading ? "Stop reading..." : "Start reading..." ;
+			menuItem.addEventListener("click",(e) => {
+				if(reading){
+					ipc.send("stopReading");
+				} else{
+					ipc.send("startReading");
+				}
+			})
+			contextMenu.appendChild(menuItem);
+		})
+		textBox.addEventListener("click",() => {
+			removeContextMenu();
+		})
+
+		const removeContextMenu = () => {
+			let removableNodes = document.getElementsByClassName("context-menu");
+			removableNodesArray = [...removableNodes]
+			removableNodesArray.forEach( 
+				node => node.remove()
+			);
+		}
+
+		const getSelectionText = () =>{
+			var text = "";
+			if (window.getSelection) {
+					text = window.getSelection().toString();
+			} else if (document.selection && document.selection.type != "Control") {
+					text = document.selection.createRange().text;
+			}
+			return text;
+		}
+
+		const highlightText = (value) => {
+			if(!value && !hiText) return;
+			console.log(`highlightText called`);
+			console.log(`value =>`,value);
+			console.log(`hiText =>`,hiText);
+			let template = value || hiText;
+			console.log(`template =>`,template);
+			hiText = template;
+			let childNodes  = textBox.childNodes;
+			childNodes.forEach(item => {
+				console.log(`item.innerHTML.includes(template) =>`,item.innerHTML.includes(template));
+				if(item.innerHTML.includes(template)){
+					item.innerHTML = item.innerHTML.replaceAll(template, `<mark class="warn">${template}</mark>`);
+				}
+			});
+		}
+
+		const findText = (value) =>{
+			let childNodes  = textBox.childNodes;
+			[...childNodes].some(item => {
+				if(item.innerHTML.includes(value)){
+					item.scrollIntoView();
+					// 		let range = document.createRange();
+					// 		range.selectNode(item);
+					// 		let sel = window.getSelection();
+					// 		sel.removeAllRanges();
+					// 		sel.addRange(range);
+					return true;
+				}
+			});
+		}
+	</script>
+
+</html>
+
